@@ -253,6 +253,9 @@ struct SegmentRecord {
     std::uint32_t hit_count{};
     std::uint32_t critical_count{};
     std::array<std::uint32_t, kDamageTypeCount> type_counts{};
+    // 这一段是“角色受到的伤害”：重放时用记录到的攻击者当施加方、角色自己当目标。
+    bool incoming{};
+    AnomalyGenerationHandleV1 attacker{};
     // 受击目标（去重，最多 8 个）：直接重放伤害时对它们施加同一个 GE。
     std::vector<AnomalyGenerationHandleV1> victims;
     std::deque<HitRecord> hits;
@@ -260,6 +263,7 @@ struct SegmentRecord {
 
 struct ReplayState {
     bool watching{};
+    bool incoming{};
     double watch_until{};
     std::uint32_t watch_hits{};
     std::int64_t watch_damage{};
@@ -693,9 +697,8 @@ void AcceptDamage(const double now,
     const bool outgoing = SameHandle(event.attacker, combatant.character);
     const bool incoming = SameHandle(event.victim, combatant.character);
 
-    // 重放观测：统计不是“本地角色受伤”的伤害，重放到底有没有重新打出伤害看这里。
-    // 它不受下面的记录开关影响，所以召唤物/未解析攻击者的命中也能被观测到。
-    if (!incoming && g_recorder.replay.watching) {
+    // 重放观测：只统计与正在重放的那一段方向相同的命中（出伤 / 受伤各自核对）。
+    if (g_recorder.replay.watching && incoming == g_recorder.replay.incoming) {
         ++g_recorder.replay.watch_hits;
         g_recorder.replay.watch_damage += event.final_damage;
         g_dirty = true;
@@ -725,6 +728,8 @@ void AcceptDamage(const double now,
         record.source_name = source_name;
         record.start = now;
         record.last = now;
+        record.incoming = incoming;
+        record.attacker = event.attacker;
         record.skill = ResolveSkillForSource(source_name, combatant);
         g_recorder.segments.push_back(std::move(record));
         if (g_recorder.segments.size() > kMaxSegments) {
@@ -763,7 +768,8 @@ void AcceptDamage(const double now,
         segment->source_name = source_name;
     }
     // 记下受击目标：重放时对它们施加同一个伤害效果，而不是重新施放技能。
-    if (event.victim.id != 0 && !incoming &&
+    // 受伤片段的目标就是角色自己，出伤片段的目标是怪物，两种都要留下。
+    if (event.victim.id != 0 &&
         segment->victims.size() < kMaxReplayTargets &&
         std::none_of(segment->victims.begin(), segment->victims.end(),
             [&](const AnomalyGenerationHandleV1 handle) {
@@ -919,13 +925,23 @@ bool TryApplyRecordedDamage(const SegmentRecord& segment,
             reason)) {
         return false;
     }
+
+    // 施加方：优先用记录到的攻击者（受伤片段靠它复现怪物的那一击）；
+    // 它不在了时，出伤片段退回当前角色，受伤片段则无法用别人顶替。
     std::uintptr_t source_character{};
-    if (!damage_apply::ResolveHandle(g_damage_bridge, combatant.character, source_character)) {
-        reason = "本地角色地址不可用";
-        return false;
+    if (!damage_apply::ResolveHandle(g_damage_bridge, segment.attacker, source_character)) {
+        if (segment.incoming) {
+            reason = "记录的攻击者已不在了，无法复现这一段受到的伤害";
+            return false;
+        }
+        if (!damage_apply::ResolveHandle(g_damage_bridge, combatant.character,
+                source_character)) {
+            reason = "本地角色地址不可用";
+            return false;
+        }
     }
 
-    // 记录到的目标优先；都消失时退到当前攻击目标。
+    // 记录到的目标优先；出伤片段都消失时退到当前攻击目标，受伤片段退到当前角色。
     std::vector<std::uintptr_t> targets;
     for (const auto& victim : segment.victims) {
         std::uintptr_t address{};
@@ -934,15 +950,18 @@ bool TryApplyRecordedDamage(const SegmentRecord& segment,
         }
         if (targets.size() >= kMaxReplayTargets) break;
     }
-    if (targets.empty() && combatant.target.id != 0) {
+    if (targets.empty()) {
+        const AnomalyGenerationHandleV1 fallback =
+            segment.incoming ? combatant.character : combatant.target;
         std::uintptr_t address{};
-        if (damage_apply::ResolveHandle(g_damage_bridge, combatant.target, address) &&
+        if (fallback.id != 0 &&
+            damage_apply::ResolveHandle(g_damage_bridge, fallback, address) &&
             address != 0) {
             targets.push_back(address);
         }
     }
     if (targets.empty()) {
-        reason = "记录的目标都已消失，当前也没有攻击目标";
+        reason = segment.incoming ? "记录的角色已不在，无法施加" : "记录的目标都已消失，当前也没有攻击目标";
         return false;
     }
 
@@ -970,6 +989,7 @@ bool TryApplyRecordedDamage(const SegmentRecord& segment,
 
     ReplayState state;
     state.watching = true;
+    state.incoming = segment.incoming;
     state.watch_until = now + kReplayWatchSeconds;
     char text[384];
     std::snprintf(text, sizeof(text), "已对 %u 个目标重新施加 %s · 效果句柄 %d",
@@ -1003,7 +1023,12 @@ void ReplaySelected(const std::uint32_t segment_id,
     std::string direct_reason;
     if (TryApplyRecordedDamage(*segment, combatant, now, direct_reason)) return;
 
-    // 2) 退回技能激活：需要一个能定位到的技能。
+    // 2) 退回技能激活：只对“角色打出去”的片段有意义。
+    //    受伤片段是怪物的技能打的，用角色的技能顶替只会打出另一段伤害。
+    if (segment->incoming) {
+        FailReplay("重放失败：" + direct_reason);
+        return;
+    }
     if (!InvocationReady()) {
         FailReplay("重放失败：" + direct_reason + "；技能激活服务也不可用");
         return;
@@ -1225,6 +1250,8 @@ void PublishModel(const bool combatant_valid) {
         } else {
             view.skill = "未识别";
         }
+        // 受伤片段在列表里加个前缀，免得和同类来源的出伤记录混在一起。
+        if (segment.incoming) view.skill = "受击 · " + view.skill;
         view.type = TypeName(DominantType(segment));
         view.hits = std::to_string(segment.hit_count);
         view.damage = std::to_string(static_cast<long long>(segment.total_damage));
@@ -1237,7 +1264,9 @@ void PublishModel(const bool combatant_valid) {
         model->selection_replayable =
             selected->skill.HasHint() || !selected->source_name.empty();
         std::string meta;
-        meta += "技能：";
+        meta += "方向：";
+        meta += selected->incoming ? "角色受到" : "角色造成";
+        meta += "\n技能：";
         if (!selected->skill.name.empty()) {
             meta += ShortLabel(selected->skill.name);
         } else if (!selected->skill.path.empty()) {
@@ -1532,7 +1561,7 @@ AnomalyStatusV1 ANOMALY_CALL Load(const AnomalyHostApiV1* host, void** context) 
     }
     ResetAll();
     *context = &g_state_token;
-    LogInfo("伤害来源记录已加载（v1.0.2）");
+    LogInfo("伤害来源记录已加载（v1.0.3）");
     return anomaly::sdk::Ok();
 }
 
@@ -1654,7 +1683,7 @@ ANOMALY_SDK_EXPORT AnomalyStatusV1 ANOMALY_CALL AnomalyPluginEntryV1(
         sizeof(*descriptor), ANOMALY_PLUGIN_API_V1_MAJOR, ANOMALY_PLUGIN_API_V1_MINOR,
         StringView("com.yu.damage-source-recorder"),
         StringView("伤害来源记录"),
-        StringView("YU-1021"), StringView("1.0.2"),
+        StringView("YU-1021"), StringView("1.0.3"),
         Load, Start, Stop, Unload, Update, Draw};
     return anomaly::sdk::Ok();
 }
