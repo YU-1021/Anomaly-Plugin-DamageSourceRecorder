@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "伤害来源记录",
+    "InternalName": "com.yu.damage-source-recorder",
+    "Version": "1.0.2",
+    "Author": "YU-1021",
+    "Punchline": "记录伤害类型与来源，并重新调用同一段伤害。",
+    "Description": "从 Anomaly 战斗事件流记录角色造成的每一下伤害：伤害类型、显示类型、基础/最终数值、暴击与命中标志、伤害来源（技能/GameplayEffect 名称）以及目标。连续命中按“同一来源 + 时间间隔”合并为一段，可选中某段并重新施放产生该段伤害的技能。重放的伤害由游戏重新计算，不伪造数值。",
+    "Games": ["nte"],
+    "ApiMajor": 1,
+    "Tags": ["combat", "ui", "utility"],
+    "AcceptsFeedback": false,
+    "RepoUrl": "https://github.com/OWNER/REPOSITORY",
+    "DownloadLinkInstall": "https://github.com/OWNER/REPOSITORY/releases/download/v1.0.2/DamageSourceRecorder.zip",
+    "DownloadLinkUpdate": "https://github.com/OWNER/REPOSITORY/releases/download/v1.0.2/DamageSourceRecorder.zip"
+  }
+]
