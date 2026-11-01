@@ -15,22 +15,21 @@ jobs:
       # 插件按这个 Anomaly 发布版的 SDK Plugin API 编译；升级 API 时同步改这里。
       ANOMALY_RELEASE: v2.4.3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 选择 Visual Studio 生成器
         id: vs
         shell: pwsh
         run: |
+          cmake --version | Select-Object -First 1
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
           if (-not (Test-Path -LiteralPath $vswhere)) { throw "未找到 vswhere：$vswhere" }
           $versions = @(& $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion)
           if ($versions.Count -eq 0) { throw '运行器上没有带 MSVC 的 Visual Studio' }
           Write-Host "已安装 VS：$($versions -join ', ')"
-          $major = (($versions | Sort-Object { [version]$_ } -Descending)[0].Split('.'))[0]
-          $generator = switch ($major) {
-            '18' { 'Visual Studio 18 2026' }
-            default { 'Visual Studio 17 2022' }
-          }
+          $latest = $versions | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+          $major = ([version]$latest).Major
+          $generator = if ($major -ge 18) { 'Visual Studio 18 2026' } else { 'Visual Studio 17 2022' }
           Write-Host "生成器：$generator"
           "generator=$generator" >> $env:GITHUB_OUTPUT
 
