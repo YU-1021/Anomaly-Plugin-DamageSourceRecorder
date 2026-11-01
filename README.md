@@ -1,5 +1,10 @@
 # 伤害来源记录（Damage Source Recorder）
 
+> **已迁入插件源仓库，本仓库停止维护。**
+> 源码、构建脚本与发布包现在都在 **[YU-1021/Anomaly-Plugins](https://github.com/YU-1021/Anomaly-Plugins)**
+> （插件目录 `plugins/DamageSourceRecorder/`），插件源地址：
+> `https://raw.githubusercontent.com/YU-1021/Anomaly-Plugins/main/pluginmaster.json`
+
 面向 Anomaly 2.4.3 / NTE 的独立插件。它把角色战斗伤害逐条记下来——**伤害类型、来源效果、数值与标志**——
 并把连续命中合并成「一段伤害」，可以选中某段并把**记录到的那一个伤害效果重新施加到记录的目标上**。
 
