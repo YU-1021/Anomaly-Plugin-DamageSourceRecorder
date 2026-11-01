@@ -9,8 +9,8 @@
 param(
     [switch]$Deploy,
     [switch]$Enable,
-    [string]$RuntimePlugins = 'D:\project\Anomaly\Anomaly-2.4.3-runtime\Anomaly\plugins',
-    [string]$ToolsDir = 'D:\project\Anomaly\Anomaly-tools',
+    [string]$RuntimePlugins = $(if ($env:AnomalyRuntimePlugins) { $env:AnomalyRuntimePlugins } else { 'D:\project\Anomaly\Anomaly-2.4.3-runtime\Anomaly\plugins' }),
+    [string]$ToolsDir = $(if ($env:AnomalyToolsDir) { $env:AnomalyToolsDir } else { 'D:\project\Anomaly\Anomaly-tools' }),
     [string]$SdkDir = $(if ($env:AnomalySDK_DIR) { $env:AnomalySDK_DIR } else { 'D:\project\Anomaly\Anomaly-sdk\lib\cmake\AnomalySDK' }),
     [string]$Configuration = 'RelWithDebInfo'
 )

@@ -7,7 +7,7 @@
 [CmdletBinding()]
 param(
     [string]$SdkDir = $env:AnomalySDK_DIR,
-    [string]$ToolsDir = 'D:\project\Anomaly\Anomaly-tools',
+    [string]$ToolsDir = $(if ($env:AnomalyToolsDir) { $env:AnomalyToolsDir } else { 'D:\project\Anomaly\Anomaly-tools' }),
     [string]$Configuration = 'RelWithDebInfo',
     [string]$Generator = 'Visual Studio 17 2022',
     [string]$OutputDir = (Join-Path $PSScriptRoot 'dist')

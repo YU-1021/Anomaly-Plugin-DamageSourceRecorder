@@ -150,6 +150,10 @@ cmake --build build --config RelWithDebInfo
 ./build.ps1 -SdkDir "C:\AnomalySDK\lib\cmake\AnomalySDK"   # 显式指定 SDK（也可用 $env:AnomalySDK_DIR）
 ```
 
+`Anomaly-tools` 与部署目标同样可以用参数或环境变量覆盖：`-ToolsDir` / `$env:AnomalyToolsDir`、
+`-RuntimePlugins` / `$env:AnomalyRuntimePlugins`。找不到 `anomaly-plugin` / `anomaly-test-host`
+时会跳过校验与离线测试并给出警告。
+
 ## 验证
 
 ```powershell
