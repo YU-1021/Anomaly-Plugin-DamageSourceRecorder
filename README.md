@@ -187,6 +187,57 @@ Anomaly-tools\anomaly-test-host.exe --plugin build\package\DamageSourceRecorder 
 
 先发 ZIP、后改索引，用户就不会看到指向空资源的版本。
 
+## 在这个源里放更多插件
+
+`pluginmaster.json` 就是「YU-1021 的插件源」本身，根是**数组**，一个插件一个对象。以后再加插件，
+只在同一个数组里追加对象、保持这个 URL 不变，用户不用重新加源，「可用」和「更新」会自动显示新条目。
+
+给新插件增加一条的步骤：
+
+1. 新插件有自己的仓库和 Release，包里 `manifest.json` 必须在 ZIP 根目录；
+2. 在 `pluginmaster.json` 里追加一个对象：`InternalName` 与包内 `manifest.id` **完全相同**，
+   `Version` 与 `manifest.version` 完全相同，`DownloadLinkInstall` 指向该版本的 Release ZIP；
+3. 跑一遍本仓库的检查脚本；
+4. 提交并推送，然后回 **Plugins > 可用** 刷新。
+
+```jsonc
+[
+  { /* 伤害来源记录（现有条目） */ },
+  {
+    "Name": "另一个插件",
+    "InternalName": "com.yu.another-plugin",
+    "Version": "0.1.0",
+    "Author": "YU-1021",
+    "Punchline": "一句话说明用途。",
+    "Games": ["nte"],
+    "ApiMajor": 1,
+    "RepoUrl": "https://github.com/YU-1021/another-plugin",
+    "DownloadLinkInstall": "https://github.com/YU-1021/another-plugin/releases/download/v0.1.0/com.yu.another-plugin-0.1.0.zip"
+  }
+]
+```
+
+Runtime 的解析规则（`src/repository/plugin_list.cpp`、`BuildCatalog`）决定了这几条硬约束：
+
+| 规则 | 后果 |
+| --- | --- |
+| 根必须是 JSON 数组 | 写成对象或 JSON 语法错误 → **整个源刷新失败**，该源下所有插件一起消失 |
+| 缺少 `Name` / `InternalName` / `Version` / `DownloadLinkInstall` | 只跳过这一条，其余照常 |
+| `InternalName` 必须是小写点分 ID（段可用 `-` 与数字，不含大写/下划线） | 该条被跳过 |
+| `Version` 必须是 SemVer（`1.0.0`，`1.0` 不行） | 该条被跳过 |
+| 同一个 `InternalName` 出现多条（含跨源同名插件） | 只保留**版本最高**的一条，其余忽略 |
+| `Games` / `ApiMajor` | 下载前判断兼容性；缺失时界面拿不到兼容信息 |
+
+字段名区分大小写，JSON 不支持注释和尾随逗号。索引里缺一个逗号，所有插件都会从「可用」里消失——
+所以改完先本地过一遍，别直接推：
+
+```powershell
+./check-index.ps1 -IndexPath .\pluginmaster.json                          # 本地：结构 / 必填字段 / ID / SemVer
+./check-index.ps1 -Validate -ToolsDir "D:\path\to\Anomaly-tools"          # 线上：再下载每个 ZIP，核对 manifest 并 validate
+```
+
+脚本按上面那张表的规则检查，一条不通过就以退出码 1 结束，可直接放进 CI。
+
 ## 部署（热重载）
 
 把 `build/package/DamageSourceRecorder/` 里的 `plugin.dll` 与 `manifest.json` 复制到
@@ -213,6 +264,7 @@ Anomaly-tools\anomaly-test-host.exe --plugin build\package\DamageSourceRecorder 
 ├── CMakePresets.json           # MSVC x64 RelWithDebInfo 预设（AnomalySDK_DIR 取自环境变量）
 ├── build.ps1                   # 构建 / 校验 / 测试 / 部署
 ├── release.ps1                 # 构建 + 校验 + pack + 生成发布 ZIP
+├── check-index.ps1             # 检查 pluginmaster.json（结构 / 字段 / ID / SemVer / 下载地址 / 包内容）
 ├── manifest.json               # 插件清单（schemaVersion 2）
 ├── pluginmaster.json           # 在线插件源索引（第三方插件页读取，根节点是数组）
 ├── locales/zh-CN.json          # 插件列表用的名称与简介
