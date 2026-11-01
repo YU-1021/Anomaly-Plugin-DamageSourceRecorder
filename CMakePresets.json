@@ -10,7 +10,7 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "AnomalySDK_DIR": "D:/project/Anomaly/Anomaly-sdk/lib/cmake/AnomalySDK"
+        "AnomalySDK_DIR": "$env{AnomalySDK_DIR}"
       }
     }
   ],

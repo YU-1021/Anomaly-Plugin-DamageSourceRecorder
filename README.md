@@ -11,6 +11,33 @@
 - 声明 capability：`ui`、`nte-combat-read`、`nte-skills-read`、`nte-skill-invocation`、
   `ue5-objects`、`ue5-names`、`interop-signature`、`memory-read`
 
+这是**第三方插件**：它不在 Anomaly 主仓库里，通过独立的插件源分发，自行构建、自行发布。
+
+## 安装
+
+需要 Anomaly **2.4.3** 或更新的 Runtime（Plugin API 1），目标游戏为 `nte`。
+
+**方式一：添加插件源（推荐，能收到更新）**
+
+1. `Insert` 打开管理界面 → **Plugins > 第三方插件** → 添加插件源：
+
+   ```text
+   https://raw.githubusercontent.com/YU-1021/Anomaly-Plugin-DamageSourceRecorder/main/pluginmaster.json
+   ```
+
+2. 回到 **Plugins > 可用** 刷新，找到「伤害来源记录」点 **安装**。
+3. 在 **Plugins > 已安装** 中启用。之后有新版本会出现在 **Plugins > 更新**。
+
+**方式二：手动安装**
+
+1. 从 [Releases](https://github.com/YU-1021/Anomaly-Plugin-DamageSourceRecorder/releases) 下载
+   `com.yu.damage-source-recorder-<版本>.zip`。
+2. 解压到 `Anomaly\plugins\DamageSourceRecorder\`，确认 `manifest.json` 直接位于这一层。
+3. 重启 Runtime（或在插件界面重载），再在插件列表里启用。
+
+ZIP 内是 `plugin.dll`、`manifest.json`、`package.sha256` 和 `locales\`。第三方插件是在游戏进程里
+运行的原生 DLL，只安装你信任的来源。
+
 ## 功能
 
 1. **记录伤害类型**
@@ -99,11 +126,15 @@ Anomaly Runtime Profile 与 2026-10-23 游戏 build 的 dump，与 b1anktool 校
 
 ## 构建
 
-需要 Windows x64、Visual Studio 2022（C++20）、CMake ≥ 3.22，以及已安装的 Anomaly SDK。
+需要 Windows x64、Visual Studio 2022（C++20）、CMake ≥ 3.22，以及 Anomaly SDK。
+
+SDK 不必从源码构建，直接从 [Anomaly Releases](https://github.com/AnomalyNTE/Anomaly/releases) 下载
+`Anomaly-<版本>-sdk.zip`（例如 `Anomaly-2.4.3-sdk.zip`），解压后把 `AnomalySDK_DIR` 指向
+`<解压目录>/lib/cmake/AnomalySDK`：
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
-  -DAnomalySDK_DIR="D:/project/Anomaly/Anomaly-sdk/lib/cmake/AnomalySDK"
+$env:AnomalySDK_DIR = 'C:\AnomalySDK\lib\cmake\AnomalySDK'
+cmake --preset default
 cmake --build build --config RelWithDebInfo
 ```
 
@@ -116,6 +147,7 @@ cmake --build build --config RelWithDebInfo
 ./build.ps1                                  # 构建 + 校验 + 测试
 ./build.ps1 -Deploy                          # 再复制到默认 Runtime 插件目录
 ./build.ps1 -Deploy -RuntimePlugins "D:\path\to\Anomaly\plugins"
+./build.ps1 -SdkDir "C:\AnomalySDK\lib\cmake\AnomalySDK"   # 显式指定 SDK（也可用 $env:AnomalySDK_DIR）
 ```
 
 ## 验证
@@ -130,6 +162,26 @@ Anomaly-tools\anomaly-test-host.exe --plugin build\package\DamageSourceRecorder 
 
 离线 fixture 没有游戏适配器，NTE 服务保持不可用；此时插件应正常加载并显示“战斗服务不可用”，
 不应崩溃或卡住。真实战斗与重放需要在游戏内验证。
+
+## 发布新版本
+
+1. 改 `manifest.json` 的 `version`（`pluginmaster.json` 也同步）。
+2. `./release.ps1` —— 构建、`validate`、离线 fixture、`pack`，并在 `dist\` 下生成
+   `com.yu.damage-source-recorder-<版本>.zip`（ZIP 根直接是 `manifest.json`、`plugin.dll`、
+   `package.sha256`、`locales\`），最后打印 SHA256。
+3. 把 ZIP 传到不可变的版本地址：`gh release create v<版本> dist\<zip>`（或推 `v<版本>` 标签，
+   `.github/workflows/release.yml` 会自己构建并上传资源）。
+4. 最后改 `pluginmaster.json` 的 `Version`、`DownloadLinkInstall` / `DownloadLinkUpdate`。
+5. 从公网重新拉一遍，确认索引能解析、下载的确实是 ZIP：
+
+   ```powershell
+   $index = 'https://raw.githubusercontent.com/YU-1021/Anomaly-Plugin-DamageSourceRecorder/main/pluginmaster.json'
+   $entry = @(Invoke-RestMethod $index) | Where-Object InternalName -eq 'com.yu.damage-source-recorder'
+   $entry.Version
+   Invoke-WebRequest $entry.DownloadLinkInstall -OutFile .\dist\online.zip
+   ```
+
+先发 ZIP、后改索引，用户就不会看到指向空资源的版本。
 
 ## 部署（热重载）
 
@@ -153,14 +205,16 @@ Anomaly-tools\anomaly-test-host.exe --plugin build\package\DamageSourceRecorder 
 
 ```text
 .
-├── CMakeLists.txt        # 消费 AnomalySDK，调用 anomaly_add_plugin
-├── CMakePresets.json     # MSVC x64 RelWithDebInfo 预设
-├── build.ps1             # 构建 / 校验 / 测试 / 部署
-├── manifest.json         # 插件清单（schemaVersion 2）
-├── pluginmaster.json     # 第三方插件源条目（发布用，地址需替换）
-├── locales/zh-CN.json    # 插件列表用的名称与简介
-├── src/plugin.cpp        # 记录、分段、技能信息、重放调度与 UI
-├── src/damage_apply.hpp  # 直接施加伤害效果：对象表解析、句柄→地址、反射校验、ProcessEvent 调用
+├── CMakeLists.txt              # 消费 AnomalySDK，调用 anomaly_add_plugin
+├── CMakePresets.json           # MSVC x64 RelWithDebInfo 预设（AnomalySDK_DIR 取自环境变量）
+├── build.ps1                   # 构建 / 校验 / 测试 / 部署
+├── release.ps1                 # 构建 + 校验 + pack + 生成发布 ZIP
+├── manifest.json               # 插件清单（schemaVersion 2）
+├── pluginmaster.json           # 在线插件源索引（第三方插件页读取，根节点是数组）
+├── locales/zh-CN.json          # 插件列表用的名称与简介
+├── src/plugin.cpp              # 记录、分段、技能信息、重放调度与 UI
+├── src/damage_apply.hpp        # 直接施加伤害效果：对象表解析、句柄→地址、反射校验、ProcessEvent 调用
+├── .github/workflows/release.yml   # 标签触发的构建与资源上传
 └── README.md
 ```
 

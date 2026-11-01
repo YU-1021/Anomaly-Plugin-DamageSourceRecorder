@@ -10,6 +10,14 @@
 
 #include "anomaly/sdk/cpp.hpp"
 
+// 头文件自己保证 Windows.h 的宏不污染后面的标准库头（仓库构建里通常已全局定义，
+// 独立构建时也一样能编）。
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 
 #include <algorithm>

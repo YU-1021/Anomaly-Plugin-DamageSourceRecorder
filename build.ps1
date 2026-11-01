@@ -11,11 +11,17 @@ param(
     [switch]$Enable,
     [string]$RuntimePlugins = 'D:\project\Anomaly\Anomaly-2.4.3-runtime\Anomaly\plugins',
     [string]$ToolsDir = 'D:\project\Anomaly\Anomaly-tools',
-    [string]$SdkDir = 'D:\project\Anomaly\Anomaly-sdk\lib\cmake\AnomalySDK',
+    [string]$SdkDir = $(if ($env:AnomalySDK_DIR) { $env:AnomalySDK_DIR } else { 'D:\project\Anomaly\Anomaly-sdk\lib\cmake\AnomalySDK' }),
     [string]$Configuration = 'RelWithDebInfo'
 )
 
 $ErrorActionPreference = 'Stop'
+
+# AnomalySDK_DIR 指向 <sdk>/lib/cmake/AnomalySDK（SDK 发布包里就是 lib/cmake/AnomalySDK）。
+if (-not (Test-Path -LiteralPath (Join-Path $SdkDir 'AnomalySDKConfig.cmake'))) {
+    throw "找不到 Anomaly SDK：$SdkDir（用 -SdkDir 指定，或设置环境变量 AnomalySDK_DIR）"
+}
+
 $root = $PSScriptRoot
 $buildDir = Join-Path $root 'build'
 $packageDir = Join-Path $buildDir 'package\DamageSourceRecorder'
