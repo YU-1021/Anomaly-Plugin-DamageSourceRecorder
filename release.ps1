@@ -9,6 +9,7 @@ param(
     [string]$SdkDir = $env:AnomalySDK_DIR,
     [string]$ToolsDir = 'D:\project\Anomaly\Anomaly-tools',
     [string]$Configuration = 'RelWithDebInfo',
+    [string]$Generator = 'Visual Studio 17 2022',
     [string]$OutputDir = (Join-Path $PSScriptRoot 'dist')
 )
 
@@ -33,7 +34,7 @@ New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 $packedRoot = Join-Path $OutputDir 'packed'
 if (Test-Path -LiteralPath $packedRoot) { Remove-Item -LiteralPath $packedRoot -Recurse -Force }
 
-cmake -S $root -B $buildDir -G 'Visual Studio 17 2022' -A x64 "-DAnomalySDK_DIR=$SdkDir"
+cmake -S $root -B $buildDir -G $Generator -A x64 "-DAnomalySDK_DIR=$SdkDir"
 if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
 
 cmake --build $buildDir --config $Configuration
